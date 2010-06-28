@@ -1,14 +1,18 @@
 open Chess
 open Opens
+open Aux
+
+let x0,y0 = 0,0;;
+let ax0,ay0 = 114+x0, 783 + y0;;
 
 let print_coord (x,y) = 
   Printf.printf "(%d, %d) " x y
 ;;
 
-
 let get_bot_color () = 
-  (* Get the color of the bot in the game *)
-  White
+  let r = exec [|"./color.sh"; string_of_int ax0; string_of_int ay0|] in
+    if r = ["#FFFFFFFFFFFF  white"] then White
+    else Black
 ;;
 
 let read_move_web () = 
@@ -27,7 +31,9 @@ let make_bot_move dep =
   (* make the bot move in the web interface with the mouse *)
   ()
 let main () = 
-  let color_bot = White in
+  Unix.sleep 2;
+  let color_bot = get_bot_color () in
+    if color_bot = White then print_endline "bot blanc" else print_endline "bot noir";
   let game = new chess in
     game#init;
   let chess_o = new opening in
