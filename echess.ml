@@ -90,15 +90,67 @@ let wait_another_play color_bot =
     sleep 0.5
   done
 ;;
-let get_move color_bot = 
+(* Compare s2 dans s1 en partant de (x,y) et renvoit un pourcentage de similitude *)
+let compare_surface s1 s2 x y = 
+  let ws2 = (Sdlvideo.surface_info s2).Sdlvideo.w in
+  let hs2 = (Sdlvideo.surface_info s2).Sdlvideo.h in
+  let c = ref 0 in
+    for i = 0 to ws2-1 do
+      for j = 0 to hs2-1 do
+	try
+	  let c1 = Sdlvideo.get_pixel s1 (i+x) (j+y) in
+	  let c2 = Sdlvideo.get_pixel s2 i j in
+	  if c1 = c2 then c := !c+1
+	with _ -> ()
+      done
+    done;
+    (float_of_int !c) /. (float_of_int (ws2*hs2))
+;;
+
+let is_in s1 s2 = 
+   let ws1 = (Sdlvideo.surface_info s1).Sdlvideo.w in
+   let hs1 = (Sdlvideo.surface_info s1).Sdlvideo.h in
+   let ws2 = (Sdlvideo.surface_info s2).Sdlvideo.w in
+   let hs2 = (Sdlvideo.surface_info s2).Sdlvideo.h in
+   let r = ref 0. in
+     assert(ws1>=ws2 && hs1 >= hs2);
+     for x = 0 to ws1-ws2 do
+       for y = 0 to hs1 - hs2 do
+	 let nr = compare_surface s1 s2 x y in
+	   r := max (!r) nr;
+       done
+     done;
+     !r
+;;
+(* A partir de l'image bmp, regarde si la pièce déplacée est un fou, un roi, etc. ou un pion *)
+let classifie img = 
+  let surface_img = Sdlvideo.load_BMP img in
+  let folder = "vignettes/" in
+  let v = [("R", "r.bmp"); ("K", "k.bmp"); ("Q", "q.bmp"); ("B", "b.bmp"); ("N", "n.bmp")] in
+  let rec find = function
+    | [] -> ""
+    | (s, img)::l ->
+	let surface = Sdlvideo.load_BMP(folder^img) in
+	  if is_in surface_img surface >= 0.95 then s
+	  else
+	    find l
+  in
+    find v
+;;
+
+let get_move () = 
   let x,y = find_last_case () in
     ignore $ Sys.command "convert img.bmp img.png";
     Sys.remove "img.bmp";
-    print_string "ok!";
     let c = Printf.sprintf "convert img.png -crop %dx%d+%d+%d img.png" 50 20 (x-t0x+5) (y-t0y+1) in
       ignore $ Sys.command c;
-	List.hd $ exec [|"gocr"; "img.png"|]
+      let s =  (List.hd $ exec [|"gocr"; "img.png"|]) in
+	ignore $ Sys.command "convert img.png img.bmp";
+	classifie "img.bmp" ^ s
 ;;
+
+
+
 let main () = 
   let color_bot = get_bot_color () in
     if color_bot = White then print_endline "bot blanc" else print_endline "bot noir";
@@ -113,7 +165,7 @@ let main () =
 	 game#move_piece dep;
 
 	 if !n mod 2 = 1 then make_bot_move color_bot dep
-	 else (wait_another_play color_bot; print_string $ get_move color_bot);
+	 else (wait_another_play color_bot; print_endline $ get_move ());
 
 	 n := !n+1;
 	 game#print;
