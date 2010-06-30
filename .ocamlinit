@@ -1,6 +1,7 @@
 #use "topfind";;
 #require "str";;
 #require "unix";;
+#require "sdl";;
 #use "board.ml";;
 #use "chess.ml";;
 #use "aux.ml";;

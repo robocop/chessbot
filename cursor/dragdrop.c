@@ -11,7 +11,7 @@ int main (int argc, char** argv)
     
     XTestFakeMotionEvent(dpy, -1, x0, y0, CurrentTime);
     XTestFakeButtonEvent(dpy, 1, True, 300);
-    XTestFakeMotionEvent(dpy, -1, x1, y1, 300);
+    XTestFakeMotionEvent(dpy, -1, x1, y1, 600);
     XTestFakeButtonEvent(dpy, 1, False, 300);
     XFlush(dpy);
     XCloseDisplay(dpy);
