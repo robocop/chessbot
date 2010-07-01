@@ -225,12 +225,15 @@ let rec read_move game chess_o =
     with _ -> read_move game chess_o
 ;;
 
-(* Par un coup dans de la forme "Algebraic chess notation" *)
-(* Necessite une classe chess comprenant l'état du jeu     *)
-(* Usage :    parse_move objet_chess string_move           *)
-(*       Exemple :                                         *)
-(* let g = new chess in g#init; parse_move g "e2e4"        *)
-
+(* Parse un coup dans de la forme "Algebraic chess notation"  *)
+(* Necessite une classe chess comprenant l'état du jeu        *)
+(* Usage :    parse_move objet_chess string_move              *)
+(*       Exemple :                                            *)
+(* let g = new chess in g#init; parse_move g "e2e4"           *)
+(* Renvoit un bool* dep option :                              *)
+(* soit (true, Some dep) si le coup est valide                *)
+(* (false, None) si le coup n'est pas valide                  *)
+(* utiliser la fonction `get_option` pour récupérer le coup   *)
 let parse_move g s = 
   let x0 = int_of_letter (s.[0]) in
   let y0 = int_of_char (s.[1]) in
