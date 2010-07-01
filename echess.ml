@@ -79,14 +79,15 @@ struct
       delete_tmp_img();
       if x = 0 then false
       else if color_bot = White then
-	x >= tbl_limit-10
+	x >= tbl_limit-20
       else
-	x <= tbl_limit-10
+	x <= tbl_limit-20
 
   (* Attend que l'adversaire ai bien joué *)
   let wait_another_play color_bot = 
+    Unix.sleep 1;
     while not (is_another_play color_bot) do
-      sleep 0.5
+      Unix.sleep 1
     done
 
 
@@ -222,6 +223,22 @@ let rec read_move game chess_o =
       ignore $ chess_o#pgn_to_move game s;
       s
     with _ -> read_move game chess_o
+;;
+
+(* Par un coup dans de la forme "Algebraic chess notation" *)
+(* Necessite une classe chess comprenant l'état du jeu     *)
+(* Usage :    parse_move objet_chess string_move           *)
+(*       Exemple :                                         *)
+(* let g = new chess in g#init; parse_move g "e2e4"        *)
+
+let parse_move g s = 
+  let x0 = int_of_letter (s.[0]) in
+  let y0 = int_of_char (s.[1]) in
+  let x1 = int_of_letter (s.[2]) in
+  let y1 = int_of_char (s.[3]) in
+  let prom = try piece_type_of_char (s.[4]) with _ -> Queen in
+    let r, mvt = g#check_move (x0,y0) (x1,y1) prom true in
+      (r, mvt)
 ;;
 
 let main () = 
