@@ -15,6 +15,9 @@ let tbl_limit = ax0 + 654;;
 (* Longueur qui sépare le centre des cases A1 et A2 (en pixel) *)
 let length = 70;;
 
+(* On ouvre stockfish *)
+let stdin, stdout = Unix.open_process "stockfish";;
+
 let print_coord (x,y) = 
   Printf.printf "(%d, %d) " x y
 ;;
@@ -47,6 +50,7 @@ let make_bot_move color = function
 	 drag_drop (calc (7-x0,7-y0)) (calc (7-x1,7-y1))
    | _ -> ()
 ;;
+
 
 
 (* Ce module a pour vocation de reparer les coups sur chesscube et de les identifier *)
@@ -243,6 +247,60 @@ let parse_move g s =
     let r, mvt = g#check_move (x0,y0) (x1,y1) prom true in
       (r, mvt)
 ;;
+(* Fonction récriproque de parse_move : à partir d'un dep, renvoit un string *)
+let write_move dep = 
+  let write (x0,y0) (x1,y1) = 
+    let x0 = String.make 1 (letter_of_int x0) in
+       let y0 =  String.make 1 (char_of_digit (y0+1)) in
+       let x1 = String.make 1 (letter_of_int x1) in
+       let y1 =  String.make 1 (char_of_digit (y1+1)) in
+	 x0^y0^x1^y1
+  in
+  match dep with 
+   | Castling  ((x0,y0),(x1,y1))
+   | Enpassant  ((x0,y0),(x1,y1))
+   | Dep ((x0,y0),(x1,y1)) ->
+       write (x0,y0) (x1,y1)
+   | Prom((x0,y0),(x1,y1),p) -> 
+       let p = String.make 1 (Char.lowercase $ char_of_piece_type p) in
+	 write (x0,y0) (x1,y1)^"="^p
+;;
+
+(* permet l'utilisation de stockfish                                    *)
+(* utilisation : init(), puis send_move "e2e4" pour jouer e2e4          *)
+(* puis : let c = search_move 10 pour trouver un coup a jouer en 10 sec *)
+(* puis ne pas oublier de jouer ce coup dans stockfish send_move c      *)
+module Stockfish = 
+struct
+  let read_stdin cond stdin = 
+    let rec read_stdin' stdin r = 
+      let s = input_line stdin in
+	print_endline s;
+	if Str.string_match r s 0 then s
+	else
+	  read_stdin' stdin r
+    in
+      read_stdin' stdin (Str.regexp cond)
+  let send stdout cmd = output_string stdout (cmd^"\n"); flush stdout
+  let init() = 
+    send stdout "uci"; ignore (read_stdin "uciok" stdin);
+    send stdout "isready"; ignore (read_stdin "readyok" stdin);
+    send stdout "ucinewgame"
+  let send_move move =
+    send stdout ("position moves "^move)
+      
+  let search_move time = 
+    send stdout "go infinite";
+    Unix.sleep time;
+    send stdout "stop";
+    let s = read_stdin "bestmove .* ponder .*" stdin in
+      (Array.of_list (Str.split (Str.regexp " ") s)).(1)
+
+  let print_board () = 
+    send stdout "d";
+    ignore (read_stdin "Key is: .*" stdin)
+end
+
 
 let main () = 
   (* On récupère la couleur du robot *)
@@ -253,6 +311,8 @@ let main () =
   let game = new chess in
     game#init;
   let chess_o = new opening in
+    (* On initialise stockfish *)
+    Stockfish.init();
     (* Ainsi qu'un compteur de coups *)
   let n = ref (if color_bot = White then 1 else 0)  in
 
@@ -261,21 +321,31 @@ let main () =
       let move = 
 	if !n mod 2 = 0 
 	then (Readmove.wait_another_play color_bot; Readmove.get_move ())
-	else read_move game chess_o
+	else (Stockfish.search_move 5)
       in
 	print_endline move;
 	let dep = 
 	  ( try
-	      chess_o#pgn_to_move game move 
+	      if  !n mod 2 = 1 then
+		let _,t = parse_move game move in
+		  get_option t
+	      else
+		chess_o#pgn_to_move game move 
 	    with _ -> 
 	      chess_o#pgn_to_move game (read_move game chess_o)
 	  )
 	in
-
+	  (* on joue le coup dans le simulateur *)
 	  game#move_piece dep;
-	  game#print;
+	  (* on joue le coup dans stockfish *)
+	  Stockfish.send_move (write_move dep);
+	  (* on joue le coup dans chesscube (si c'est à nous de jouer) *)
+	  if !n mod 2 = 1 then make_bot_move color_bot dep;
 
-	 if !n mod 2 = 1 then make_bot_move color_bot dep;
+	  (* on affiche le plateau *)
+	  game#print;
+	  Stockfish.print_board();
+
 	 n := !n+1
     done
 
