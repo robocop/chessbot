@@ -2,18 +2,25 @@ open Chess
 open Opens
 open Aux
 
-(* Ces valeurs dépendent de votre navigateur, et de votre résolution*)
+(* les valeurs précédés de §§§ dépendent de votre navigateur, et de votre résolution*)
+(* les autres normalement de varie pas (normalement) *)
 
-(* Coordonnées absolue du centre de la première case A1 sur l'écran *)
-let ax0,ay0 = 619, 749;;
-(* Coordonnées du debut du tableau*)
-let t0x,t0y = ax0+537, ay0-311;;
-(* Coordonnées de la fin du tableau *)
-let t1x, t1y = ax0+758, ay0 + 28;;
+(* §§§ coordonées du coup inférieur gauche de la board *)
+let bx, by = 582, 781;; 
+(* §§§ longueur de la board *)
+let l_board = 539;;
+
+(* longeur d'un coté d'une  case *)
+let length = l_board/8;;
 (* position en x de du centre du tableau des coups *)
-let tbl_limit = ax0 + 654;;
-(* Longueur qui sépare le centre des cases A1 et A2 (en pixel) *)
-let length = 70;;
+let tbl_limit = bx + l_board + 150;;
+(* Coordonnées du debut du tableau*)
+let t0x,t0y = bx + l_board+31, by-l_board+209;;
+(* Coordonnées de la fin du tableau *)
+let t1x, t1y = bx + l_board+233, by-l_board+528;;
+
+(* coordonnées du centre de la premiere case *)
+let ax0, ay0 = bx+length/2, by-length/2;;
 
 (* On ouvre stockfish *)
 let stdin, stdout = Unix.open_process "stockfish";;
@@ -34,10 +41,6 @@ let drag_drop (x0,y0) (x1,y1) =
 ;;
 
 
-let make_web_move dep = 
-  (* make the web move in stockfish*)
-  ()
-
 let calc (x,y) = (ax0+length*x, ay0-length*y);;
 
 let make_bot_move color = function
@@ -51,6 +54,100 @@ let make_bot_move color = function
    | _ -> ()
 ;;
 
+
+type p = 
+  | B 
+  | W
+  | E
+;;
+module Compare_move =
+struct
+  let h s =  (Sdlvideo.surface_info s).Sdlvideo.h
+  let w s =  (Sdlvideo.surface_info s).Sdlvideo.w
+  let int_white =  16777215l
+  let int_black = 0l
+    (*  Binarise une surface *)
+  let binarise s = 
+    let hs,ws = h s, w s in
+      for i = 0 to hs do
+	for j = 0 to ws do
+	  let c = Sdlvideo.get_pixel s i j in
+	    if c >= Int32.div int_white 3l then
+	      Sdlvideo.put_pixel s i j int_white
+	    else
+	      Sdlvideo.put_pixel s i j int_black
+	done
+      done
+	(* recupère la couleur d'une piece sur l'image : *)
+	(* W : blanche, B : noire, et E : pas de pièce   *)
+  let color_piece s x y = 
+    let n = ref 0 in
+    let f = float_of_int in
+      for i = x-20 to x+20 do
+	for j = y-20 to y+20 do
+	  let c = Sdlvideo.get_pixel s i j in
+	    if c = int_white then n := !n+1
+	done
+      done;
+      let r = (f !n) /. 1681. in
+	if r <= 0.75 then B
+	else if r <= 0.95 then W
+	else E
+  (* Scan l'image pour récupérer la board *)
+  let get_map s color_bot = 
+    let l = ref [] in
+      for i = 0 to 7 do
+	for j = 0 to 7 do
+	  let x,y = bx+i*length + length/2, by-(j*length+length/2) in
+	  let c = color_piece s x y in
+	    (* on "tourne" la board si on est les noirs *)
+	  let coord = if color_bot = White then (i,j) else (7-i, 7-j) in
+	    l := (coord, c)::!l;
+	done
+      done;
+      !l
+
+  (* Compare deux scans d'image et trouve les différences (fonction aux) *)
+  let rec find_diff back = function
+    | [] -> []
+    | e::l ->
+	if not $ List.mem e back then 
+	  e::find_diff back l
+	else
+	  find_diff back l
+
+  (* à partir du chemin d'une image et de la couleur du bot, *)
+  (* génère la liste du materiel sur la board                *)
+  let get_list bot_color img = 
+    let s = Sdlvideo.load_BMP img in
+      binarise s;
+      get_map s bot_color
+   (* à partir de deux listes générer par get_list, retourne le coup joué *)
+  let get_move  bl l = 
+    match find_diff bl l with
+	(* soit c'est un déplacement normal *)
+      | [(c0, E); (c1, _)] -> (c0,c1)
+	  (* sinon si c'est un roque ou une prise en passant *)
+      | l  ->
+	  (* les prises en passant et roques demandent un traitement particulier car ils engendrent 4 modification du plateau *)
+	  let get_x = fun x -> fst (fst x) in
+	  let get_y =  fun x -> snd (fst x) in
+	    (* si c'est un roque *)
+	    if List.for_all (fun e -> let y = get_y e in (y = 0 || y = 7)) l then
+	      let xk0, yk0 = fst $ List.find (fun e -> let x = get_x e in x = 4) l in
+		(* on cherche le mouvement du roi, qui marque le roque *)
+	      let xk1, yk1 = fst $ List.find (fun e -> let x = get_x e in (x =(xk0+2)) || (x=(xk0-2))) l  in
+		((xk0, yk0), (xk1, yk1))
+	    else 
+	      (* si c'est une prise en passant *)
+	      let x0, y0 = fst $ List.find (fun e -> let y = get_y e in y = 4 || y = 3) l in
+	      let x1,y1 = fst $ List.find (fun e -> let y = get_y e in y = 5 || y = 2) l in
+		((x0, y0), (x1, y1))
+  let make_img_board () = 
+     let c = Printf.sprintf "import -window root -crop %dx%d+%d+%d board.bmp" l_board l_board bx (by-l_board) in
+       ignore $ Sys.command c
+end
+  
 
 
 (* Ce module a pour vocation de reparer les coups sur chesscube et de les identifier *)
@@ -227,8 +324,11 @@ let rec read_move game chess_o =
       ignore $ chess_o#pgn_to_move game s;
       s
     with _ -> read_move game chess_o
-;;
 
+(* Obtient un déplacement avec deux coordonnées *)
+let get_move g (x0, y0) (x1, y1) prom = 
+   g#check_move (x0,y0) (x1,y1) prom true
+;;
 (* Parse un coup dans de la forme "Algebraic chess notation"  *)
 (* Necessite une classe chess comprenant l'état du jeu        *)
 (* Usage :    parse_move objet_chess string_move              *)
@@ -244,9 +344,9 @@ let parse_move g s =
   let x1 = int_of_letter (s.[2]) in
   let y1 = int_of_char (s.[3]) in
   let prom = try piece_type_of_char (s.[4]) with _ -> Queen in
-    let r, mvt = g#check_move (x0,y0) (x1,y1) prom true in
-      (r, mvt)
+    g#check_move (x0,y0) (x1,y1) prom true
 ;;
+
 (* Fonction récriproque de parse_move : à partir d'un dep, renvoit un string *)
 let write_move dep = 
   let write (x0,y0) (x1,y1) = 
@@ -264,7 +364,6 @@ let write_move dep =
    | Prom((x0,y0),(x1,y1),p) -> 
        let p = String.make 1 (Char.lowercase $ char_of_piece_type p) in
 	 write (x0,y0) (x1,y1)^"="^p
-;;
 
 (* permet l'utilisation de stockfish                                    *)
 (* utilisation : init(), puis send_move "e2e4" pour jouer e2e4          *)
@@ -315,22 +414,34 @@ let main () =
     Stockfish.init();
     (* Ainsi qu'un compteur de coups *)
   let n = ref (if color_bot = White then 1 else 0)  in
-
+    (* On récupère une position de départ pour l'ocr de coups *)
+    Compare_move.make_img_board ();
+    let l = ref (Compare_move.get_list color_bot "board.bmp") in
     while true do
-      (* on regarde a qui c'est  de jouer *)
-      let move = 
-	if !n mod 2 = 0 
-	then (Readmove.wait_another_play color_bot; Readmove.get_move ())
-	else (Stockfish.search_move 5)
+      let nl = 
+	if !n mod 2 = 0 then
+	  begin
+	    Compare_move.make_img_board ();
+	     Compare_move.get_list color_bot "board.bmp"
+	  end
+	else [] 
       in
-	print_endline move;
+	
+     
 	let dep = 
 	  ( try
-	      if  !n mod 2 = 1 then
+	      if  !n mod 2 = 0 then
+		begin
+		  Readmove.wait_another_play color_bot;
+		  let m0,m1 = Compare_move.get_move !l nl in
+		    print_coord m0; print_coord m1;
+		  let _,t = get_move game m0 m1 Queen in
+		    get_option t
+		end
+	      else
+		let move = Stockfish.search_move 5 in
 		let _,t = parse_move game move in
 		  get_option t
-	      else
-		chess_o#pgn_to_move game move 
 	    with _ -> 
 	      chess_o#pgn_to_move game (read_move game chess_o)
 	  )
@@ -341,7 +452,8 @@ let main () =
 	  Stockfish.send_move (write_move dep);
 	  (* on joue le coup dans chesscube (si c'est à nous de jouer) *)
 	  if !n mod 2 = 1 then make_bot_move color_bot dep;
-
+	  (* on change l'état de la map pour l'orc *)
+	  l := nl;
 	  (* on affiche le plateau *)
 	  game#print;
 	  Stockfish.print_board();
