@@ -6,3 +6,6 @@
 #use "chess.ml";;
 #use "aux.ml";;
 #use "opens.ml";;
+#use "config.ml";;
+#use "get_move.ml";;
+#use "stockfish.ml"
