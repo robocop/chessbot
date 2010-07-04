@@ -71,16 +71,15 @@ struct
       Unix.sleep 1
     done
 end
-;;
+
 (* Lit un coup à la main dans les notation pgn *)
 (* Ex : Nf3 *)
 let rec read_move game chess_o = 
   let s = read_line(print_string "Move : ") in
     try
-      ignore $ chess_o#pgn_to_move game s;
-      s
+      chess_o#pgn_to_move game s
     with _ -> read_move game chess_o
-
+;;
 (* Obtient un déplacement avec deux coordonnées *)
 let get_move g (x0, y0) (x1, y1) prom = 
    g#check_move (x0,y0) (x1,y1) prom true
@@ -121,7 +120,20 @@ let write_move dep =
        let p = String.make 1 (Char.lowercase $ char_of_piece_type p) in
 	 write (x0,y0) (x1,y1)^"="^p
 
-
+;;
+let get_color_board game = 
+  let r = Array.make_matrix 8 8 E in
+  let b = game#board#get_board in
+    for i = 0 to 7 do
+      for j = 0 to 7 do
+	match b.(i).(j) with
+	  | Empty -> r.(j).(i) <- E
+	  | Piece(_, White) ->  r.(j).(i) <- W
+	  | Piece(_, Black) ->  r.(j).(i) <- B
+      done
+    done;
+    r
+;;
 
 let main () = 
   (* On récupère la couleur du robot *)
@@ -138,7 +150,7 @@ let main () =
     (* Ainsi qu'un compteur de coups *)
   let n = ref (if bot_color = White then 1 else 0)  in
     (* On récupère une position de départ pour l'ocr de coups *)
-    let board0 = ref (get_list bot_color) in
+    let board0 = ref (get_color_board game) in
       print_endline "generation board 0 ok";
     while true do
       (* si c'est au moteur de jouer *)
@@ -146,34 +158,47 @@ let main () =
 	begin
 	   let move = Stockfish.search_move 5 in
 	     print_endline move;
-	   let _,t = parse_move game move in
-	   let dep = get_option t in
-	     (* on joue le coup dans le simulateur *)
-	     game#move_piece dep;
-	     (* on joue le coup dans stockfish *)
-	     Stockfish.send_move (write_move dep);
-	     (* on joue le coup dans chesscube  *)
-	     make_bot_move bot_color dep;
-	     let board1 = get_list bot_color in
-	       print_endline "generation de la nouvelle board";
-	       board0 := board1;
+	     let dep = 
+	       try
+		 let _,t = parse_move game move in
+		 get_option t
+	       with _ -> read_move game chess_o 
+	     in
+	       (* on joue le coup dans le simulateur *)
+		 game#move_piece dep;
+
+	       (* on joue le coup dans stockfish *)
+	       Stockfish.send_move (write_move dep);
+	       (* on joue le coup dans chesscube  *)
+	       make_bot_move bot_color dep;
+	       
+	       let board1 = get_color_board game in
+		 print_endline "generation de la nouvelle board";
+		 board0 := board1
 	end
       else 
 	begin
 	Wait_move.wait_another_play bot_color;
 	  print_endline "le joueur a joue";
+	  Unix.sleep 1;
 	let board1 = get_list bot_color in
 	print_endline "generation de la nouvelle board";
-	let c0,c1 = Read_move.get_move !board0 board1 in
-	  print_coord c0; print_newline (); print_coord c1;
-	let _,t = get_move game c0 c1 Queen in
-	let dep = get_option t in
+	  let dep = 
+	    try 
+	      let c0,c1 = Read_move.get_move !board0 board1 in
+		print_coord c0; print_newline (); print_coord c1;
+		let _,t = get_move game c0 c1 Queen in
+		  get_option t
+	    with _ ->  read_move game chess_o 
+	  in
+	      
 	  (* on joue le coup dans le simulateur *)
 	  game#move_piece dep;
 	  (* on joue le coup dans stockfish *)
 	  Stockfish.send_move (write_move dep);
 	   board0 := board1;
-	end;
+	end
+	  ;
       n := !n+1;
       game#print
     done
