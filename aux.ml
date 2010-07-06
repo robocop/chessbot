@@ -84,3 +84,5 @@ let exec t =
   let pid = Unix.create_process t.(0) t Unix.stdin y Unix.stderr in 
     read pid x
 ;;
+
+let sleep s = ignore (Unix.select [] [] [] s);;

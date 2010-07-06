@@ -8,25 +8,42 @@ open Stockfish
 let print_coord (x,y) = 
   Printf.printf "(%d, %d) " x y
 ;;
-let sleep s = ignore (Unix.select [] [] [] s);;
-
 
 let drag_drop (x0,y0) (x1,y1) = 
   ignore $ Sys.command (Printf.sprintf "./cursor/dragdrop %d %d %d %d" x0 y0 x1 y1)
 ;;
 
+let click (x,y) = 
+  let c = Printf.sprintf "xdotool mousemove %d %d; xdotool click 1" x y in
+    ignore $ Sys.command c
+;;
 
 let calc (x,y) = (ax0+length*x, ay0-length*y);;
 
-let make_bot_move color = function
-   | Castling  ((x0,y0),(x1,y1))
-   | Enpassant  ((x0,y0),(x1,y1))
-   | Dep ((x0,y0),(x1,y1)) ->
-       if color = White then
+let make_bot_move color move = 
+  let make_move (x0,y0) (x1,y1) = 
+     if color = White then
 	 drag_drop (calc (x0,y0)) (calc (x1,y1))
        else
 	 drag_drop (calc (7-x0,7-y0)) (calc (7-x1,7-y1))
-   | _ -> ()
+  in
+  let l_half_case = length/2 in
+  let get_coord x = function
+    | Queen -> x-3*l_half_case
+    | Rook -> x-l_half_case
+    | Bishop -> x+l_half_case
+    | Knight -> x+3*l_half_case
+    | _ -> x
+  in
+    match move with
+      | Castling  ((x0,y0),(x1,y1))
+      | Enpassant  ((x0,y0),(x1,y1))
+      | Dep ((x0,y0),(x1,y1)) ->
+          make_move (x0,y0) (x1,y1)
+      | Prom((x0,y0), (x1,y1), p) ->
+          make_move (x0,y0) (x1,y1);
+	  let x, y = calc (x1,y1) in
+	  click (get_coord x p, y)
 ;;
 
 
@@ -37,40 +54,44 @@ let make_bot_move color = function
 module Wait_move = 
 struct
   (* Cette fonction cherche la partie bleu `823250l` dans le tableau des coups à droite. *)
-  let find_last_case () = 
-    let c = Printf.sprintf "import -window root -crop %dx%d+%d+%d img.bmp" (t1x-t0x) (t1y - t0y) t0x t0y in
+  let find_last_case color_bot = 
+    let c = Printf.sprintf "import -window root -crop %dx%d+%d+%d img.bmp" 2 (t1y - t0y) (if color_bot = White then tbl_limit+10 else t0x) t0y in
       ignore $ Sys.command c;
       let s = Sdlvideo.load_BMP "img.bmp" in
       let w = (Sdlvideo.surface_info s).Sdlvideo.w in
       let h = (Sdlvideo.surface_info s).Sdlvideo.h in
       let r = ref (0,0) in
       let f = ref true in
-	for i = 0 to w do
-	  for j = 0 to h do
-	    if !f && (Sdlvideo.get_pixel s i j) =  823250l then (r := (i+t0x,j+t0y); f := false);
-	  done
+	while !f do
+	  for i = 0 to w do
+	    for j = 0 to h do
+	      if !f && (Sdlvideo.get_pixel s i j) =  823250l then (r := (i+t0x,j+t0y); f := false);
+	    done
+	  done;
+	  f := false;
 	done;
 	!r
+;;
   let delete_tmp_img() = 
     Sys.remove "img.bmp"
 
   (* Regarde si l'adversaire a joué *)
   let is_another_play color_bot = 
-    let x,y = find_last_case() in
-      delete_tmp_img();
+    let x,y = find_last_case color_bot in
+      (* delete_tmp_img(); *)
       if x = 0 then false
-      else if color_bot = White then
-	x >= tbl_limit-20
       else
-	x <= tbl_limit-20
+	true
 
   (* Attend que l'adversaire ai bien joué *)
   let wait_another_play color_bot = 
-    Unix.sleep 1;
+    sleep 0.3;
     while not (is_another_play color_bot) do
-      Unix.sleep 1
+      sleep 0.3
     done
+     
 end
+;;
 
 (* Lit un coup à la main dans les notation pgn *)
 (* Ex : Nf3 *)
@@ -156,7 +177,7 @@ let main () =
       (* si c'est au moteur de jouer *)
       if !n mod 2 = 1 then
 	begin
-	   let move = Stockfish.search_move 5 in
+	   let move = Stockfish.search_move time in
 	     print_endline move;
 	     let dep = 
 	       try
@@ -180,7 +201,7 @@ let main () =
 	begin
 	Wait_move.wait_another_play bot_color;
 	  print_endline "le joueur a joue";
-	  Unix.sleep 1;
+	  sleep 0.3;
 	let board1 = get_list bot_color in
 	print_endline "generation de la nouvelle board";
 	  let dep = 
@@ -189,7 +210,13 @@ let main () =
 		print_coord c0; print_newline (); print_coord c1;
 		let _,t = get_move game c0 c1 Queen in
 		  get_option t
-	    with _ ->  read_move game chess_o 
+	    with _ ->  
+	      begin
+		let v = read_move game chess_o in 
+		  print_endline "diff : ";
+		  List.iter (fun x -> print_coord x) (Read_move.diff !board0 board1);
+		  v
+	      end
 	  in
 	      
 	  (* on joue le coup dans le simulateur *)

@@ -5,13 +5,15 @@
 let bx, by = 582, 781;; 
 (* §§§ longueur de la board *)
 let l_board = 539;;
+(* §§§ temps de reflexion pour le bot *)
+let time = 1.5;;
 
 (* longeur d'un coté d'une  case *)
 let length = l_board/8;;
 (* position en x de du centre du tableau des coups *)
 let tbl_limit = bx + l_board + 150;;
 (* Coordonnées du debut du tableau*)
-let t0x,t0y = bx + l_board+31, by-l_board+209;;
+let t0x,t0y = bx + l_board+61, by-l_board+209;;
 (* Coordonnées de la fin du tableau *)
 let t1x, t1y = bx + l_board+233, by-l_board+528;;
 
