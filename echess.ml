@@ -85,9 +85,9 @@ struct
 
   (* Attend que l'adversaire ai bien joué *)
   let wait_another_play color_bot = 
-    sleep 0.3;
+    sleep 0.2;
     while not (is_another_play color_bot) do
-      sleep 0.3
+      sleep 0.2
     done
      
 end
@@ -201,7 +201,7 @@ let main () =
 	begin
 	Wait_move.wait_another_play bot_color;
 	  print_endline "le joueur a joue";
-	  sleep 0.3;
+	  sleep 0.2;
 	let board1 = get_list bot_color in
 	print_endline "generation de la nouvelle board";
 	  let dep = 

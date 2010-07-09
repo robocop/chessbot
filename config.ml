@@ -6,7 +6,7 @@ let bx, by = 582, 781;;
 (* §§§ longueur de la board *)
 let l_board = 539;;
 (* §§§ temps de reflexion pour le bot *)
-let time = 1.5;;
+let time = 0.5;;
 
 (* longeur d'un coté d'une  case *)
 let length = l_board/8;;
